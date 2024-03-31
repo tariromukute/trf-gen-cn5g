@@ -47,7 +47,7 @@ RUN apt-get update && \
 COPY . ./
 
 RUN clang -O2 -emit-llvm -g -c nsh-decap.bpf.c -o - | \
-	llc -march=bpf -mcpu=probe -filetype=obj -lbpf -o nsh-decap.bpf.o
+	llc -march=bpf -mcpu=probe -filetype=obj -o nsh-decap.bpf.o
 
 FROM $BASE_IMAGE AS trf-gen-cn5g
 
@@ -71,7 +71,7 @@ RUN apt-get update && \
 
 WORKDIR /tmp
 
-COPY --from=builder /app/nsh-decap.bpf.o /app/
+COPY --from=builder /app/nsh-decap.bpf.o .
 COPY trfgen_entrypoint.sh .
 
 ENTRYPOINT ["/bin/bash","/tmp/trfgen_entrypoint.sh"]

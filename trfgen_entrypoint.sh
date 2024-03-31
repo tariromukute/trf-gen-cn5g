@@ -35,13 +35,12 @@ fi
 
 if [[ ${NSH_DECAP} == "yes" ]];then
   echo
-  echo "Loading TC eBPF program to decap NSH on ingress"
-  tc qdisc add dev eth0 clsact
-  tc filter add dev eth0 ingress bpf direct-action obj nsh-decap.bpf.o sec nsh_decap
+  echo "Loading XDP eBPF program to decap NSH on ingress"
+  ip link set dev eth0 xdpgeneric obj /tmp/nsh-decap.bpf.o sec xdp_nsh_decap
   
   echo
   echo "Showing TC ingress"
-  tc filter show dev eth0 ingress
+  ip link show dev eth0
 fi
 
 

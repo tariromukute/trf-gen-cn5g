@@ -1,96 +1,66 @@
 #include <linux/bpf.h>
 #include <linux/if_ether.h>
-#include <linux/if_packet.h>
-#include <linux/if_vlan.h>
-#include <linux/ip.h>
-#include <linux/in.h>
-#include <linux/tcp.h>
-#include <linux/udp.h>
-#include <linux/btf.h>
 
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_endian.h>
 #include "nsh.h"
 
-#define TC_ACT_UNSPEC         (-1)
-#define TC_ACT_OK               0
-#define TC_ACT_SHOT             2
-#define TC_ACT_STOLEN           4
-#define TC_ACT_REDIRECT         7
-
 #define ETH_P_IP 0x0800 /* Internet Protocol packet */
 #define ETH_P_NSH	0x894F /* Network Service Header */
 #define __section(x) __attribute__((section(x), used))
-
-// struct nsh_md1_ctx {
-// 	__be32 context[4];
-// };
-
-// struct nsh_md2_tlv {
-// 	__be16 md_class;
-// 	__u8 type;
-// 	__u8 length;
-// 	__u8 md_value[];
-// };
-
-// struct nshhdr {
-// 	__be16 ver_flags_ttl_len;
-// 	__u8 mdtype;
-// 	__u8 np;
-// 	__be32 path_hdr;
-// 	union {
-// 	    struct nsh_md1_ctx md1;
-// 	    struct nsh_md2_tlv md2;
-// 	};
-// };
 
 /* Header cursor to keep track of current parsing position */
 struct hdr_cursor {
 	void *pos;
 };
 
-
-SEC("nsh_decap")
-int nsh_decap_fn(struct __sk_buff *skb)
+SEC("xdp_nsh_decap")
+int xdp_nsh_decap_fn(struct xdp_md *ctx)
 {
-
-    void *data_end = (void *)(unsigned long long)skb->data_end;
-	void *data = (void *)(unsigned long long)skb->data;
+    void *data_end = (void *)(unsigned long long)ctx->data_end;
+	void *data = (void *)(unsigned long long)ctx->data;
     struct hdr_cursor nh = { .pos = data };
 
     if (nh.pos + sizeof(struct ethhdr) > data_end)
-        return TC_ACT_SHOT;
+        return XDP_ABORTED;
 
     struct ethhdr *eth = nh.pos;
+
     if (eth->h_proto != bpf_htons(ETH_P_NSH))
-        return TC_ACT_OK;
+        return XDP_PASS;
 
-    nh.pos += sizeof(struct ethhdr);
+    struct ethhdr eth_cpy;
 
-    struct nshhdr *nshhdr = nh.pos;
+    struct nshhdr *nshhdr = nh.pos + sizeof(struct ethhdr);
     if (nh.pos + sizeof(struct nshhdr) > data_end)
-        return TC_ACT_SHOT;
+        return XDP_ABORTED;
 
     __u16 roomlen = nsh_hdr_len(nshhdr);
 
     if(roomlen < sizeof(struct nshhdr))
-		return TC_ACT_SHOT;
+		return XDP_ABORTED;
 
     if (nh.pos + roomlen > data_end)
-        return TC_ACT_SHOT;
+        return XDP_ABORTED;
 
-    // int roomlen = sizeof(struct nshhdr);
-    int ret = bpf_skb_adjust_room(skb, -roomlen, BPF_ADJ_ROOM_MAC, 0);
-    if (ret) {
-        bpf_printk("error reducing skb adjust room.\n");
-        return TC_ACT_SHOT;
-    }
+    __builtin_memcpy(&eth_cpy, eth, sizeof(eth_cpy));
 
-    // data_end = (void *)(unsigned long long)skb->data_end;
-    // data = (void *)(unsigned long long)skb->data;
-    // eth = data;
+	if (bpf_xdp_adjust_head(ctx, (int) roomlen))
+		return XDP_ABORTED;
+    
+    data_end = (void *)(long)ctx->data_end;
+    data = (void *)(unsigned long long)ctx->data;
+    nh.pos = data;
 
-    return TC_ACT_OK;
+    if (nh.pos + sizeof(struct ethhdr) > data_end)
+		return XDP_ABORTED;
+
+    eth = nh.pos;
+    __builtin_memcpy(nh.pos, &eth_cpy, sizeof(struct ethhdr));
+
+    eth->h_proto = bpf_htons(ETH_P_IP);
+
+    return XDP_PASS;
 }
 
 char __license[] __section("license") = "GPL";

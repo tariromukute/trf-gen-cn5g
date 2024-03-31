@@ -18,12 +18,13 @@ apt install clang llvm libbpf-dev
 cd /home
 
 clang -O2 -emit-llvm -g -c nsh-decap.bpf.c -o - | \
-	llc -march=bpf -mcpu=probe -filetype=obj -lbpf -o nsh-decap.bpf.o
+	llc -march=bpf -mcpu=probe -filetype=obj -o nsh-decap.bpf.o
 
 # Attach program
-tc qdisc add dev eth0 clsact
-tc filter add dev eth0 ingress bpf direct-action obj nsh-decap.bpf.o sec nsh_decap
-tc filter show dev eth0 ingress
+ip link set dev eth0 xdpgeneric obj nsh-decap.bpf.o sec xdp_nsh_decap
+
+# Detach progam
+ip link set dev eth0 xdpgeneric off
 ```
 
 Build image
