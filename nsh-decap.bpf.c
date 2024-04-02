@@ -25,20 +25,18 @@ int xdp_nsh_decap_fn(struct xdp_md *ctx)
         return XDP_ABORTED;
 
     struct ethhdr *eth = nh.pos;
-
+    
     if (eth->h_proto != bpf_htons(ETH_P_NSH))
         return XDP_PASS;
 
     struct ethhdr eth_cpy;
 
     struct nshhdr *nshhdr = nh.pos + sizeof(struct ethhdr);
+    // For MD TYPE 2 packets with no metadata, the encap packet needs to be > NSH_M_TYPE1_LEN
     if (nh.pos + sizeof(struct nshhdr) > data_end)
         return XDP_ABORTED;
 
     __u16 roomlen = nsh_hdr_len(nshhdr);
-
-    if(roomlen < sizeof(struct nshhdr))
-		return XDP_ABORTED;
 
     if (nh.pos + roomlen > data_end)
         return XDP_ABORTED;
